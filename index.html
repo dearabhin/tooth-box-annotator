@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tooth box annotator · Project 202609001</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  color-scheme: light;
+  --bg: #e7ecea; --panel: #f6f8f7; --ink: #1c2a2e; --muted: #5d6c70; --line: #c9d3d0;
+  --stage: #1d2528; --milk: #3d9ad5; --perm: #e0962a; --focus: #0e7c72; --focus-ink: #ffffff;
+  --warn: #b4441f; --chip: #ffffff; --done: #2f8a4b;
+  --font: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #131a1c; --panel: #1b2427; --ink: #e4ebe9; --muted: #92a3a6; --line: #2d3a3d;
+    --stage: #0e1415; --chip: #233034; --focus: #2bb3a5; --focus-ink: #0b1b1a; --warn: #f07a52; --done: #57c27a;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+#empty[hidden], #hud[hidden] { display: none; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--font); display: grid;
+  grid-template-rows: auto 1fr; grid-template-columns: 250px 1fr 290px;
+  grid-template-areas: "top top top" "list stage side"; }
+button, input, select { font: inherit; color: inherit; }
+button { background: var(--chip); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+button:hover { border-color: var(--muted); }
+button.primary { background: var(--focus); color: var(--focus-ink); border-color: var(--focus); font-weight: 700; }
+button:disabled { opacity: .45; cursor: default; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+header { grid-area: top; display: flex; gap: 10px; align-items: center; padding: 10px 14px; background: var(--panel);
+  border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+header h1 { font-size: 17px; margin: 0 14px 0 0; font-weight: 700; letter-spacing: .01em; }
+header h1 span { color: var(--muted); font-weight: 400; }
+header .grow { flex: 1; }
+header label { color: var(--muted); font-size: 14px; display: flex; gap: 6px; align-items: center; }
+header input[type=text] { width: 130px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--chip); }
+#saveState { color: var(--muted); font-size: 13px; min-width: 120px; text-align: right; }
+
+aside#list { grid-area: list; border-right: 1px solid var(--line); background: var(--panel); overflow: auto; }
+#progress { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+#progress .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin: 6px 0 8px; }
+#progress .bar i { display: block; height: 100%; background: var(--done); width: 0; }
+#progress .filters { display: flex; gap: 4px; }
+#progress .filters button { padding: 3px 8px; font-size: 13px; }
+#progress .filters button[aria-pressed=true] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.pgroup h3 { font-size: 13px; color: var(--muted); margin: 0; padding: 10px 14px 4px; font-weight: 700; }
+.item { display: flex; align-items: center; gap: 8px; padding: 4px 14px; cursor: pointer; font-size: 14px; }
+.item:hover { background: var(--bg); }
+.item[aria-current=true] { background: var(--focus); color: var(--focus-ink); }
+.dot { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--muted); flex: none; }
+.dot.prog { background: linear-gradient(90deg, var(--muted) 50%, transparent 50%); }
+.dot.done { background: var(--done); border-color: var(--done); }
+.dot.skip { background: var(--warn); border-color: var(--warn); }
+.item .n { margin-left: auto; font-variant-numeric: tabular-nums; opacity: .75; font-size: 12px; }
+
+main#stage { grid-area: stage; position: relative; background: var(--stage); overflow: hidden; }
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#empty { position: absolute; inset: 0; display: grid; place-items: center; color: #c9d3d0; text-align: center; padding: 24px; }
+#empty div { max-width: 460px; }
+#empty h2 { font-size: 22px; margin: 0 0 8px; color: #fff; }
+#hud { position: absolute; left: 12px; bottom: 12px; color: #dfe7e5; font-size: 13px; background: rgba(0,0,0,.45);
+  padding: 4px 10px; border-radius: 6px; pointer-events: none; }
+
+aside#side { grid-area: side; border-left: 1px solid var(--line); background: var(--panel); overflow: auto; padding: 14px; }
+#side h2 { font-size: 18px; margin: 0; }
+#side .meta { color: var(--muted); font-size: 14px; margin: 2px 0 12px; }
+#side h4 { font-size: 14px; margin: 16px 0 6px; }
+#side p.hint { color: var(--muted); font-size: 13px; margin: 4px 0 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { min-width: 46px; padding: 5px 8px; border-radius: 6px; border: 1.5px solid var(--line); background: var(--chip);
+  font-weight: 700; font-variant-numeric: tabular-nums; text-align: center; position: relative; }
+.chip.milk { border-left: 5px solid var(--milk); }
+.chip.perm { border-left: 5px solid var(--perm); }
+.chip.used { opacity: .45; text-decoration: line-through; }
+.chip.next { background: var(--focus); color: var(--focus-ink); border-color: var(--focus); opacity: 1; text-decoration: none; }
+.chip.unc::after { content: "?"; position: absolute; top: -7px; right: -5px; font-size: 11px; background: var(--warn);
+  color: #fff; border-radius: 8px; padding: 0 4px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); margin-top: 8px; }
+.legend span { white-space: nowrap; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+#boxInfo { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--chip); }
+#boxInfo .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+#boxInfo input[type=number] { width: 70px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.actions { display: grid; gap: 8px; margin-top: 16px; }
+#warnings { color: var(--warn); font-size: 13px; margin-top: 8px; }
+textarea { width: 100%; min-height: 54px; font: inherit; font-size: 14px; padding: 6px 8px; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--chip); color: var(--ink); resize: vertical; }
+
+dialog { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); max-width: 640px; padding: 22px 26px; }
+dialog::backdrop { background: rgba(10,16,18,.55); }
+dialog h2 { margin-top: 0; }
+dialog table { border-collapse: collapse; width: 100%; font-size: 14px; }
+dialog td { padding: 3px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+dialog td:first-child { white-space: nowrap; font-weight: 700; }
+kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font: 13px var(--font); background: var(--chip); }
+#toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); background: var(--ink); color: var(--panel);
+  padding: 8px 16px; border-radius: 8px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+#toast.on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
+@media (max-width: 900px) {
+  body { grid-template-columns: 1fr; grid-template-rows: auto 40vh 1fr auto;
+    grid-template-areas: "top" "stage" "side" "list"; }
+}
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Tooth boxes <span>· Project 202609001</span></h1>
+  <button class="primary" id="btnOpen">Open pack</button>
+  <input type="file" id="dirInput" webkitdirectory directory multiple class="sr">
+  <button id="btnImport" disabled>Import annotations</button>
+  <input type="file" id="importInput" accept=".json,application/json" class="sr">
+  <button id="btnExport" disabled>Export annotations</button>
+  <label>Annotator <input type="text" id="annotator" placeholder="your name" autocomplete="name"></label>
+  <span class="grow"></span>
+  <span id="saveState"></span>
+  <button id="btnHelp">Shortcuts and rules</button>
+</header>
+
+<aside id="list" aria-label="Images">
+  <div id="progress">
+    <div><b id="progDone">0</b> of <b id="progTotal">0</b> images done</div>
+    <div class="bar"><i id="progBar"></i></div>
+    <div class="filters" role="group" aria-label="Filter images">
+      <button data-f="all" aria-pressed="true">All</button>
+      <button data-f="todo" aria-pressed="false">To do</button>
+      <button data-f="done" aria-pressed="false">Done</button>
+    </div>
+  </div>
+  <div id="items"></div>
+</aside>
+
+<main id="stage">
+  <canvas id="cv"></canvas>
+  <div id="empty"><div>
+    <h2>Open the annotation pack to start</h2>
+    <p>Unzip <b>annotation_pack.zip</b>, click <b>Open pack</b> and choose the unzipped folder.
+    Photos stay on this computer; nothing is uploaded.</p>
+    <p>Work saves automatically in this browser. Export when you finish a session.</p>
+  </div></div>
+  <div id="hud" hidden></div>
+</main>
+
+<aside id="side" aria-label="Current image">
+  <h2 id="imgTitle">No image</h2>
+  <div class="meta" id="imgMeta"></div>
+
+  <h4>Teeth listed in the sheet</h4>
+  <p class="hint">Draw boxes left to right; each new box takes the highlighted number. With a box selected, click a number to change it.</p>
+  <div class="chips" id="chips"></div>
+  <div class="legend"><span><i style="background:var(--milk)"></i>Milk, 51 to 85</span><span><i style="background:var(--perm)"></i>Permanent, 11 to 48</span></div>
+
+  <h4>Selected box</h4>
+  <div id="boxInfo"><span class="hint">Click a box to select it.</span></div>
+
+  <div id="warnings"></div>
+
+  <h4>Note for this image</h4>
+  <textarea id="note" placeholder="e.g. 54 hidden by the mirror"></textarea>
+
+  <div class="actions">
+    <button class="primary" id="btnDone" disabled>Mark done and go to next</button>
+    <button id="btnSkip" disabled>Mark unusable (blurry, wrong view)</button>
+  </div>
+</aside>
+
+<dialog id="help">
+  <h2>Shortcuts and rules</h2>
+  <table>
+    <tr><td>Draw a box</td><td>Drag on the photo. It takes the next number from the sheet.</td></tr>
+    <tr><td>Move or resize</td><td>Drag a box, or drag its edges and corners.</td></tr>
+    <tr><td>Change the tooth</td><td>Select the box, then click a number, or type it (e.g. <kbd>5</kbd><kbd>4</kbd>).</td></tr>
+    <tr><td>Unnumbered box</td><td>Grey dashed boxes (model suggestions) take the next number when clicked.</td></tr>
+    <tr><td><kbd>Delete</kbd></td><td>Remove selected box</td></tr>
+    <tr><td><kbd>U</kbd></td><td>Toggle uncertain on selected box</td></tr>
+    <tr><td><kbd>Tab</kbd></td><td>Select next box</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>Undo</td></tr>
+    <tr><td><kbd>Enter</kbd></td><td>Mark done and go to next image</td></tr>
+    <tr><td><kbd>→</kbd> / <kbd>←</kbd></td><td>Next / previous image</td></tr>
+    <tr><td>Zoom and pan</td><td>Mouse wheel zooms. Right-drag, or hold <kbd>Space</kbd> and drag, to pan. <kbd>F</kbd> fits the photo.</td></tr>
+  </table>
+  <h3>How to box a tooth</h3>
+  <p>Box the visible crown tightly, edge to edge, including partly erupted teeth. Leave out gum, lips and the mirror.
+  Box a tooth only if you can tell which tooth it is; otherwise mark it uncertain with <kbd>U</kbd>.
+  In mirror photos, number teeth by their real FDI position, as in the sheet.</p>
+  <p><button id="helpClose" class="primary">Close</button></p>
+</dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const VALID = new Set([...[1,2,3,4].flatMap(q => [1,2,3,4,5,6,7,8].map(t => q*10+t)), ...[5,6,7,8].flatMap(q => [1,2,3,4,5].map(t => q*10+t))]);
+const isMilk = f => f >= 51;
+const COLORS = () => { const cs = getComputedStyle(document.documentElement);
+  return { milk: cs.getPropertyValue('--milk').trim(), perm: cs.getPropertyValue('--perm').trim(), focus: cs.getPropertyValue('--focus').trim() }; };
+
+let manifest = null, files = new Map(), state = null, cur = -1, img = null, imgUrl = null;
+let view = { s: 1, x: 0, y: 0 }, sel = -1, drag = null, spaceDown = false, filter = 'all', nextOverride = null;
+let history = {}, digitBuf = '', digitTimer = null, saveTimer = null;
+const cv = $('#cv'), ctx = cv.getContext('2d');
+
+// ---------- loading ----------
+$('#btnOpen').onclick = () => $('#dirInput').click();
+$('#dirInput').onchange = async e => {
+  const list = [...e.target.files]; if (!list.length) return;
+  files = new Map();
+  for (const f of list) { const rel = (f.webkitRelativePath || f.name).split('/'); files.set(rel.slice(1).join('/') || f.name, f); files.set(rel.join('/'), f); }
+  const mf = list.find(f => f.name === 'manifest.json');
+  if (!mf) { toast('No manifest.json in that folder. Choose the unzipped annotation_pack folder.'); return; }
+  try { manifest = JSON.parse(await mf.text()); } catch { toast('manifest.json could not be read.'); return; }
+  const key = 'toothann:' + manifest.pack_id;
+  try { state = JSON.parse(localStorage.getItem(key) || 'null'); } catch { state = null; }
+  if (!state) state = { format: 'tooth-ai-annotations/1', pack_id: manifest.pack_id, annotator: '', images: {} };
+  $('#annotator').value = state.annotator || localStorage.getItem('toothann:name') || '';
+  const missing = manifest.images.filter(m => !findFile(m.file)).length;
+  ['#btnImport', '#btnExport', '#btnDone', '#btnSkip'].forEach(s => $(s).disabled = false);
+  $('#empty').hidden = true; $('#empty').style.display = 'none'; $('#hud').hidden = false;
+  renderList();
+  const firstTodo = manifest.images.findIndex(m => status(m.id) === 'todo' || status(m.id) === 'progress');
+  await go(firstTodo >= 0 ? firstTodo : 0);
+  toast(`${manifest.images.length} images loaded` + (missing ? `, ${missing} photo files missing` : ''));
+};
+function findFile(rel) { if (files.has(rel)) return files.get(rel); for (const [k, f] of files) if (k.endsWith(rel)) return f; return null; }
+
+$('#btnImport').onclick = () => $('#importInput').click();
+$('#importInput').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return; e.target.value = '';
+  let data; try { data = JSON.parse(await f.text()); } catch { toast('That file is not valid JSON.'); return; }
+  if (data.pack_id && data.pack_id !== manifest.pack_id) { toast('That file belongs to a different pack.'); return; }
+  let took = 0, kept = 0;
+  for (const [id, a] of Object.entries(data.images || {})) {
+    const local = state.images[id];
+    const localEmpty = !local || (!local.boxes.length && local.status === 'todo');
+    if (localEmpty || (a.updated && local.updated && a.updated > local.updated && a.status !== 'todo')) { state.images[id] = structuredClone(a); took++; }
+    else kept++;
+  }
+  persist(); renderList(); await go(cur);
+  toast(`Imported ${took} images` + (kept ? `; kept your newer work on ${kept}` : ''));
+};
+
+$('#btnExport').onclick = () => {
+  state.annotator = $('#annotator').value.trim(); persist(true);
+  const out = { ...state, exported: new Date().toISOString(), images: {} };
+  for (const m of manifest.images) {
+    const a = state.images[m.id];
+    if (a && (a.boxes.length || a.status !== 'todo' || a.note)) out.images[m.id] = { ...a, w: m.w, h: m.h };
+  }
+  const name = `tooth_annotations_${(state.annotator || 'anon').replace(/\W+/g, '_')}_${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.json`;
+  const url = URL.createObjectURL(new Blob([JSON.stringify(out, null, 1)], { type: 'application/json' }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: name }); document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  state.lastExport = Date.now(); persist(true);
+  toast(`Exported ${Object.keys(out.images).length} images to ${name}. Upload it to MyDrive/tooth_ai/annotations/`);
+};
+$('#annotator').oninput = e => { if (state) { state.annotator = e.target.value.trim(); persist(); } localStorage.setItem('toothann:name', e.target.value.trim()); };
+
+// ---------- state helpers ----------
+const meta = () => manifest.images[cur];
+function ann(id = meta().id) { return state.images[id] ||= { status: 'todo', boxes: [], note: '', updated: null }; }
+function status(id) { const a = state.images[id]; if (!a) return 'todo'; if (a.status === 'done' || a.status === 'skip') return a.status; return a.boxes.length ? 'progress' : 'todo'; }
+function persist(now) {
+  if (!state) return;
+  clearTimeout(saveTimer);
+  const doSave = () => { try { localStorage.setItem('toothann:' + state.pack_id, JSON.stringify(state)); $('#saveState').textContent = 'Saved in this browser'; }
+    catch { $('#saveState').textContent = 'Browser storage full: export now'; } };
+  if (now) doSave(); else { $('#saveState').textContent = 'Saving…'; saveTimer = setTimeout(doSave, 400); }
+}
+function touch() { const a = ann(); a.updated = new Date().toISOString(); if (a.status === 'done' || a.status === 'skip') a.status = 'progress'; persist(); renderItem(cur); }
+function snapshot() { const id = meta().id; (history[id] ||= []).push(JSON.stringify(ann().boxes)); if (history[id].length > 60) history[id].shift(); }
+function undo() { const h = history[meta().id]; if (!h || !h.length) { toast('Nothing to undo'); return; } ann().boxes = JSON.parse(h.pop()); sel = -1; touch(); refresh(); }
+function nextFdi() {
+  const used = new Set(ann().boxes.map(b => b.fdi).filter(Boolean));
+  if (nextOverride && !used.has(nextOverride)) return nextOverride;
+  nextOverride = null;
+  return meta().fdi.find(f => !used.has(f)) ?? null;
+}
+function assign(i, fdi) {
+  const boxes = ann().boxes; snapshot();
+  const other = boxes.findIndex((b, j) => j !== i && b.fdi === fdi);
+  if (other >= 0) boxes[other].fdi = null;            // a tooth number can only be used once per photo
+  boxes[i].fdi = fdi; boxes[i].source = 'manual'; nextOverride = null; touch(); refresh();
+  if (other >= 0) toast(`${fdi} moved from another box; that box is now unnumbered`);
+}
+
+// ---------- navigation ----------
+async function go(i) {
+  if (!manifest || i < 0 || i >= manifest.images.length) return;
+  cur = i; sel = -1; nextOverride = null; drag = null;
+  const m = meta(), f = findFile(m.file);
+  renderList(); renderSide();
+  if (!f) { img = null; draw(); toast(`Photo file missing: ${m.file}`); return; }
+  if (imgUrl) URL.revokeObjectURL(imgUrl);
+  imgUrl = URL.createObjectURL(f);
+  const el = new Image(); el.src = imgUrl;
+  try { await el.decode(); } catch { img = null; draw(); toast('Could not open this photo'); return; }
+  if (cur !== i) return;
+  img = el;
+  if (img.naturalWidth !== m.w || img.naturalHeight !== m.h) toast(`Photo size ${img.naturalWidth}×${img.naturalHeight} differs from the manifest; re-run step 1`);
+  fit(); refresh();
+  const sc = document.querySelector('.item[aria-current=true]'); if (sc) sc.scrollIntoView({ block: 'nearest' });
+}
+function step(d) {
+  const ids = visibleIdx(); const p = ids.indexOf(cur);
+  const n = p < 0 ? ids.find(j => (d > 0 ? j > cur : j < cur)) : ids[p + d];
+  if (n !== undefined) go(n);
+}
+
+// ---------- list ----------
+function visibleIdx() { return manifest.images.map((m, i) => i).filter(i => {
+  const s = status(manifest.images[i].id); return filter === 'all' || (filter === 'done' ? (s === 'done' || s === 'skip') : (s === 'todo' || s === 'progress')); }); }
+function renderList() {
+  if (!manifest) return;
+  const box = $('#items'); box.innerHTML = '';
+  let pid = null, group = null;
+  for (const i of visibleIdx()) {
+    const m = manifest.images[i];
+    if (m.pid !== pid) { pid = m.pid; group = document.createElement('div'); group.className = 'pgroup';
+      group.innerHTML = `<h3>${pid}</h3>`; box.append(group); }
+    const el = document.createElement('div'); el.className = 'item'; el.dataset.i = i; el.tabIndex = 0;
+    el.setAttribute('aria-current', i === cur); group.append(el);
+    fillItem(el, i);
+    el.onclick = () => go(i); el.onkeydown = e => { if (e.key === 'Enter') go(i); };
+  }
+  const done = manifest.images.filter(m => ['done', 'skip'].includes(status(m.id))).length;
+  $('#progDone').textContent = done; $('#progTotal').textContent = manifest.images.length;
+  $('#progBar').style.width = (100 * done / manifest.images.length) + '%';
+}
+function fillItem(el, i) {
+  const m = manifest.images[i], s = status(m.id), a = state.images[m.id];
+  const nb = a ? a.boxes.length : 0;
+  el.innerHTML = `<span class="dot ${s === 'progress' ? 'prog' : s}"></span><span>${m.id.replace(m.pid + '_', '')}</span><span class="n">${nb}/${m.fdi.length}</span>`;
+}
+function renderItem(i) { const el = document.querySelector(`.item[data-i="${i}"]`); if (el) fillItem(el, i);
+  const done = manifest.images.filter(m => ['done', 'skip'].includes(status(m.id))).length;
+  $('#progDone').textContent = done; $('#progBar').style.width = (100 * done / manifest.images.length) + '%'; }
+document.querySelectorAll('.filters button').forEach(b => b.onclick = () => {
+  filter = b.dataset.f; document.querySelectorAll('.filters button').forEach(x => x.setAttribute('aria-pressed', x === b)); renderList(); });
+
+// ---------- side panel ----------
+function renderSide() {
+  if (!manifest || cur < 0) return;
+  const m = meta(), a = ann(), used = new Map();
+  a.boxes.forEach((b, j) => b.fdi && used.set(b.fdi, j));
+  $('#imgTitle').textContent = m.id;
+  $('#imgMeta').textContent = `${m.view.replace('_', ' ')}, ${m.device}` + (m.source_format === 'heic' ? ', converted from HEIC' : '') +
+    ` · ${a.boxes.length} of ${m.fdi.length} boxed` + (a.status === 'done' ? ' · done' : a.status === 'skip' ? ' · unusable' : '');
+  const nf = nextFdi(), chips = $('#chips'); chips.innerHTML = '';
+  for (const f of m.fdi) {
+    const c = document.createElement('button');
+    c.className = 'chip ' + (isMilk(f) ? 'milk' : 'perm') + (used.has(f) ? ' used' : '') + (f === nf ? ' next' : '') + (m.uncertain.includes(f) ? ' unc' : '');
+    c.textContent = f; c.title = used.has(f) ? 'Boxed. Click to select that box.' : (sel >= 0 ? 'Assign to the selected box' : 'Use for the next box');
+    c.onclick = () => { if (sel >= 0) assign(sel, f); else if (used.has(f)) { sel = used.get(f); refresh(); } else { nextOverride = f; renderSide(); } };
+    chips.append(c);
+  }
+  if (!m.fdi.length) chips.innerHTML = '<span class="hint">No teeth listed in the sheet for this photo.</span>';
+  // selected box
+  const bi = $('#boxInfo');
+  if (sel >= 0 && a.boxes[sel]) {
+    const b = a.boxes[sel];
+    bi.innerHTML = `<div><b>${b.fdi ?? 'No number yet'}</b> ${b.fdi ? (isMilk(b.fdi) ? 'milk tooth' : 'permanent tooth') : ''}${b.source === 'model' ? ' · model suggestion' : ''}${b.suggest ? ` (model guess: ${b.suggest})` : ''}</div>
+      <div class="row"><label><input type="checkbox" id="uncBox" ${b.uncertain ? 'checked' : ''}> Uncertain (<kbd>U</kbd>)</label></div>
+      <div class="row"><label>Other number <input type="number" id="otherFdi" min="11" max="85" placeholder="FDI"></label><button id="otherSet">Set</button><button id="delBox">Delete</button></div>`;
+    $('#uncBox').onchange = e => { snapshot(); b.uncertain = e.target.checked; touch(); refresh(); };
+    $('#otherSet').onclick = () => { const v = +$('#otherFdi').value; if (VALID.has(v)) assign(sel, v); else toast(`${$('#otherFdi').value || 'That'} is not a valid FDI number`); };
+    $('#delBox').onclick = delSel;
+  } else bi.innerHTML = '<span class="hint">Click a box to select it.</span>';
+  // warnings
+  const w = [], listed = new Set(m.fdi);
+  const extra = a.boxes.filter(b => b.fdi && !listed.has(b.fdi)).map(b => b.fdi);
+  const unnum = a.boxes.filter(b => !b.fdi).length;
+  if (unnum) w.push(`${unnum} box${unnum > 1 ? 'es have' : ' has'} no tooth number.`);
+  if (extra.length) w.push(`Not in the sheet: ${extra.join(', ')}. Add a note if the sheet is wrong.`);
+  $('#warnings').textContent = w.join(' ');
+  $('#note').value = a.note || '';
+}
+$('#note').oninput = e => { ann().note = e.target.value; touch(); };
+$('#btnDone').onclick = () => markDone();
+$('#btnSkip').onclick = () => { const a = ann(); a.status = 'skip'; a.updated = new Date().toISOString(); persist(); renderItem(cur); toast('Marked unusable'); step(1); };
+function markDone() {
+  const a = ann(); const unnum = a.boxes.filter(b => !b.fdi).length;
+  if (unnum) { toast(`Number the ${unnum} unnumbered box${unnum > 1 ? 'es' : ''} first`); return; }
+  a.status = 'done'; a.updated = new Date().toISOString(); persist(); renderItem(cur);
+  const left = meta().fdi.length - a.boxes.length;
+  toast(left > 0 ? `Done, with ${left} listed tooth${left > 1 ? ' teeth' : ''} not boxed` : 'Done');
+  step(1);
+}
+function delSel() { if (sel < 0) return; snapshot(); ann().boxes.splice(sel, 1); sel = -1; touch(); refresh(); }
+
+// ---------- canvas ----------
+function resize() { const r = cv.getBoundingClientRect(), d = devicePixelRatio || 1; cv.width = r.width * d; cv.height = r.height * d; draw(); }
+new ResizeObserver(resize).observe(cv);
+function fit() { if (!img) return; const r = cv.getBoundingClientRect(), pad = 24;
+  view.s = Math.min((r.width - 2 * pad) / img.naturalWidth, (r.height - 2 * pad) / img.naturalHeight);
+  view.x = (r.width - img.naturalWidth * view.s) / 2; view.y = (r.height - img.naturalHeight * view.s) / 2; }
+const toImg = (px, py) => [(px - view.x) / view.s, (py - view.y) / view.s];
+const boxPx = b => { const m = meta(); return [b.x * m.w, b.y * m.h, b.w * m.w, b.h * m.h]; };
+function draw() {
+  const d = devicePixelRatio || 1; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height);
+  if (!img || cur < 0) return;
+  ctx.setTransform(d * view.s, 0, 0, d * view.s, d * view.x, d * view.y);
+  ctx.imageSmoothingQuality = 'high'; ctx.drawImage(img, 0, 0);
+  const C = COLORS(), lw = 2 / view.s, a = ann();
+  const all = drag && drag.mode === 'new' ? [...a.boxes, drag.box] : a.boxes;
+  all.forEach((b, j) => {
+    const [x, y, w, h] = boxPx(b), col = b.fdi ? (isMilk(b.fdi) ? C.milk : C.perm) : '#d7dfdd';
+    ctx.setLineDash(b.source === 'model' && !b.fdi ? [6 / view.s, 4 / view.s] : b.uncertain ? [3 / view.s, 3 / view.s] : []);
+    if (j === sel) { ctx.lineWidth = 6 / view.s; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.strokeRect(x, y, w, h); }
+    ctx.lineWidth = lw * (j === sel ? 1.4 : 1); ctx.strokeStyle = col; ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
+    const label = (b.fdi ?? '?') + (b.uncertain ? '?' : ''), fs = 15 / view.s;
+    ctx.font = `700 ${fs}px Atkinson Hyperlegible, system-ui, sans-serif`;
+    const tw = ctx.measureText(label).width + 8 / view.s;
+    ctx.fillStyle = col; ctx.fillRect(x, y - fs * 1.25, tw, fs * 1.25);
+    ctx.fillStyle = '#10181a'; ctx.fillText(label, x + 4 / view.s, y - fs * 0.3);
+    if (j === sel) { ctx.fillStyle = '#fff'; for (const [hx, hy] of [[x, y], [x + w, y], [x, y + h], [x + w, y + h]]) ctx.fillRect(hx - 4 / view.s, hy - 4 / view.s, 8 / view.s, 8 / view.s); }
+  });
+  const nf = nextFdi();
+  $('#hud').textContent = `${Math.round(view.s * 100)}% · next box: ${nf ?? 'none left in the list'}`;
+}
+function refresh() { draw(); renderSide(); }
+
+function hit(px, py) {
+  const a = ann(), tol = 7;
+  const order = sel >= 0 ? [sel, ...a.boxes.map((_, j) => j).filter(j => j !== sel).reverse()] : a.boxes.map((_, j) => j).reverse();
+  for (const j of order) {
+    const [x, y, w, h] = boxPx(a.boxes[j]);
+    const L = view.x + x * view.s, T = view.y + y * view.s, R = L + w * view.s, B = T + h * view.s;
+    if (px < L - tol || px > R + tol || py < T - tol || py > B + tol) continue;
+    let e = ''; if (Math.abs(py - T) <= tol) e += 'n'; else if (Math.abs(py - B) <= tol) e += 's';
+    if (Math.abs(px - L) <= tol) e += 'w'; else if (Math.abs(px - R) <= tol) e += 'e';
+    if (e && j === sel) return { j, mode: e };
+    if (px >= L && px <= R && py >= T && py <= B) return { j, mode: 'move' };
+  }
+  return null;
+}
+const CURSORS = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize', move: 'move' };
+
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('pointerdown', e => {
+  if (!img) return; cv.setPointerCapture(e.pointerId);
+  const r = cv.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+  if (e.button === 2 || e.button === 1 || spaceDown) { drag = { mode: 'pan', sx: px, sy: py, vx: view.x, vy: view.y }; return; }
+  const h = hit(px, py), [ix, iy] = toImg(px, py);
+  if (h) { const b = ann().boxes[h.j]; sel = h.j; drag = { mode: h.mode, j: h.j, sx: ix, sy: iy, orig: { ...b }, moved: false, snap: JSON.stringify(ann().boxes) }; refresh(); return; }
+  sel = -1; drag = { mode: 'new', sx: ix, sy: iy, box: { fdi: null, x: 0, y: 0, w: 0, h: 0, uncertain: false, source: 'manual' } }; refresh();
+});
+cv.addEventListener('pointermove', e => {
+  const r = cv.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+  if (!drag) { if (img) { const h = hit(px, py); cv.style.cursor = spaceDown ? 'grab' : h ? CURSORS[h.mode] : 'crosshair'; } return; }
+  if (drag.mode === 'pan') { view.x = drag.vx + px - drag.sx; view.y = drag.vy + py - drag.sy; draw(); return; }
+  const m = meta(); let [ix, iy] = toImg(px, py);
+  ix = Math.max(0, Math.min(m.w, ix)); iy = Math.max(0, Math.min(m.h, iy));
+  if (drag.mode === 'new') {
+    const b = drag.box; b.x = Math.min(ix, drag.sx) / m.w; b.y = Math.min(iy, drag.sy) / m.h;
+    b.w = Math.abs(ix - drag.sx) / m.w; b.h = Math.abs(iy - drag.sy) / m.h; draw(); return;
+  }
+  const b = ann().boxes[drag.j], o = drag.orig, dx = (ix - drag.sx) / m.w, dy = (iy - drag.sy) / m.h;
+  if (Math.abs(dx * m.w) + Math.abs(dy * m.h) > 2 / view.s) drag.moved = true;
+  if (drag.mode === 'move') { b.x = Math.max(0, Math.min(1 - o.w, o.x + dx)); b.y = Math.max(0, Math.min(1 - o.h, o.y + dy)); }
+  else {
+    let L = o.x, T = o.y, R = o.x + o.w, B = o.y + o.h;
+    if (drag.mode.includes('w')) L = Math.min(o.x + dx, R - 0.003); if (drag.mode.includes('e')) R = Math.max(R + dx, L + 0.003);
+    if (drag.mode.includes('n')) T = Math.min(o.y + dy, B - 0.003); if (drag.mode.includes('s')) B = Math.max(B + dy, T + 0.003);
+    Object.assign(b, { x: Math.max(0, L), y: Math.max(0, T), w: Math.min(1, R) - Math.max(0, L), h: Math.min(1, B) - Math.max(0, T) });
+  }
+  draw();
+});
+cv.addEventListener('pointerup', () => {
+  if (!drag) return; const d = drag; drag = null;
+  if (d.mode === 'pan') return;
+  const m = meta(), boxes = ann().boxes;
+  if (d.mode === 'new') {
+    const b = d.box;
+    if (b.w * m.w < 6 || b.h * m.h < 6) { draw(); return; }   // a click, not a box
+    snapshot(); b.fdi = nextFdi(); boxes.push(b); sel = boxes.length - 1; nextOverride = null; touch(); refresh(); return;
+  }
+  if (d.moved) { (history[m.id] ||= []).push(d.snap); const b = boxes[d.j]; if (b.source === 'model') b.source = 'manual'; touch(); refresh(); return; }
+  const b = boxes[d.j];
+  if (!b.fdi) { const nf = nextFdi(); if (nf) assign(d.j, nf); }     // clicking an unnumbered suggestion numbers it
+});
+cv.addEventListener('wheel', e => {
+  if (!img) return; e.preventDefault();
+  const r = cv.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+  const k = Math.exp(-e.deltaY * 0.0015), s = Math.max(0.02, Math.min(20, view.s * k));
+  view.x = px - (px - view.x) * s / view.s; view.y = py - (py - view.y) * s / view.s; view.s = s; draw();
+}, { passive: false });
+
+// ---------- keyboard ----------
+document.addEventListener('keydown', e => {
+  if (!manifest || $('#help').open) return;
+  const t = e.target; if (t instanceof Element && t.matches('input, textarea, select')) return;
+  if (e.key === ' ') { spaceDown = true; e.preventDefault(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const a = ann();
+  if (e.key === 'ArrowRight' || e.key === 'n') { step(1); return; }
+  if (e.key === 'ArrowLeft' || e.key === 'p') { step(-1); return; }
+  if (e.key === 'Enter') { e.preventDefault(); markDone(); return; }
+  if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); delSel(); return; }
+  if (e.key === 'Escape') { sel = -1; refresh(); return; }
+  if (e.key === 'f') { fit(); draw(); return; }
+  if (e.key === 'Tab') { e.preventDefault(); if (a.boxes.length) { sel = (sel + (e.shiftKey ? -1 : 1) + a.boxes.length) % a.boxes.length; refresh(); } return; }
+  if (e.key === 'u' && sel >= 0) { snapshot(); a.boxes[sel].uncertain = !a.boxes[sel].uncertain; touch(); refresh(); return; }
+  if (/^\d$/.test(e.key) && sel >= 0) {
+    digitBuf += e.key; clearTimeout(digitTimer);
+    if (digitBuf.length === 2) { const v = +digitBuf; digitBuf = ''; if (VALID.has(v)) assign(sel, v); else toast(`${v} is not a valid FDI number`); }
+    else digitTimer = setTimeout(() => digitBuf = '', 900);
+  }
+});
+document.addEventListener('keyup', e => { if (e.key === ' ') spaceDown = false; });
+window.addEventListener('beforeunload', e => {
+  if (state && Object.values(state.images).some(a => a.updated && (!state.lastExport || Date.parse(a.updated) > state.lastExport))) { e.preventDefault(); e.returnValue = ''; }
+});
+
+// ---------- misc ----------
+$('#btnHelp').onclick = () => $('#help').showModal();
+$('#helpClose').onclick = () => $('#help').close();
+let toastT; function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 3200); }
+</script>
+</body>
+</html>
